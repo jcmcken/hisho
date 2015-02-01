@@ -1,0 +1,2 @@
+cm-api >= 8.0.0
+click
