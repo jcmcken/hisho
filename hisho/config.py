@@ -12,6 +12,9 @@ DEFAULTS = {
   'username': 'admin',
   'password': 'admin',
   'use_tls': 'false',
+ 
+  # default cluster to affect
+  'cluster': 'cluster',
 }
 
 class Converter(object):
@@ -77,12 +80,9 @@ class Config(object):
         #
         return os.path.join(self.dir, '.hisho-%s.cfg' % os.getppid())
 
-    def to_dict(self):
-        return dict(list(self.iteritems()))
-
-    def iteritems(self):
+    def iteritems(self, convert=False):
         for key in self.parser.options(self.SECTION_NAME):
-            yield key, self.get(key)
+            yield key, self.get(key, convert=convert)
 
     def convert(self, key, value):
         if key not in CONVERSIONS:
@@ -125,10 +125,10 @@ class Config(object):
         except ConfigParser.NoOptionError:
             return default
 
-    def get(self, key, default=None):
+    def get(self, key, default=None, convert=True):
         raw_value = self._get(key) or DEFAULTS.get(key, None)
 
-        if raw_value == None:
+        if raw_value == None or not convert:
             return raw_value
 
         return self.convert(key, raw_value)

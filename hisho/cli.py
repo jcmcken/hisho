@@ -17,15 +17,21 @@ class Context(object):
           self.config.get('password'),
           use_tls = self.config.get('use_tls'),
         )
+        self.cluster = None
+        self.service = None
 
-@click.group()
-@click.option('--debug/--no-debug', default=False)
-@click.pass_context
-def main(ctx, debug):
-    ctx.obj = Context()
+    def setup_service(self, name):
+        try:
+            self.service = self.cluster.get_service(name)
+        except ApiException:
+            raise click.BadParameter('must pass a valid service name')
 
-    if debug:
-        LOG.setLevel(logging.DEBUG)
+    def setup_cluster(self, name):
+        try:
+            self.cluster = self.api.get_cluster(name)
+        except ApiException:
+            raise click.BadParameter('must pass a valid cluster name')
+
 
 @click.command()
 @click.pass_context
@@ -39,10 +45,17 @@ def ping(ctx):
     except ApiException:
         raise click.UsageError('successfully contacted CM, but the request was rejected')
 
-    if result == 'ping':
-        click.echo('OK')
-    else:
+    if result != 'ping':
         raise click.UsageError('successfully pinged CM, but got an unexpected result')
+
+@click.group()
+@click.option('--debug/--no-debug', default=False)
+@click.pass_context
+def main(ctx, debug):
+    ctx.obj = Context()
+
+    if debug:
+        LOG.setLevel(logging.DEBUG)
 
 @click.group()
 @click.pass_context
@@ -57,11 +70,14 @@ def config(ctx):
 def config_generate(ctx, key, bytes, encoding):
     try:
         codecs.lookup(encoding)
-    except codecs.LookupError:
-        raise click.BadParameter("invalid encoding '%s'" % encoding, param=encoding)
+    except LookupError:
+        raise click.BadParameter("choose a valid encoding (got '%s')" % encoding)
 
     cfg = ctx.obj.config
-    cfg.generate(key, num_bytes=bytes, encoding=encoding)
+    try:
+        cfg.generate(key, num_bytes=bytes, encoding=encoding)
+    except UnicodeDecodeError:
+        raise click.BadParameter("could not convert value to selected encoding")
     cfg.save()
 
 @click.command(name='set')
@@ -100,15 +116,95 @@ def config_destroy(ctx):
 @click.group()
 @click.pass_context
 def hosts(ctx):
-    click.echo('In hosts')
+    pass
 
 @click.command(name='list')
-def hosts_list():
-    click.echo('In hosts list')
+@click.pass_context
+def hosts_list(ctx):
+    # ensure CM is accessible
+    ctx.invoke(ping)
+
+    api = ctx.obj.api
+    hosts = api.get_all_hosts().objects
+
+    for host in hosts:
+        click.echo(host.hostname)
+
+@click.group()
+@click.pass_context
+def clusters(ctx):
+    # ensure CM is accessible
+    ctx.invoke(ping)
+
+@click.command(name='list')
+@click.pass_context
+def clusters_list(ctx):
+
+    api = ctx.obj.api
+    clusters = api.get_all_clusters().objects
+
+    for cluster in clusters:
+        click.echo(cluster.name)
+
+@click.group()
+@click.pass_context
+@click.option('-c', '--cluster', default=None)
+def services(ctx, cluster):
+    # ensure CM is accessible
+    ctx.invoke(ping)
+
+    cfg = ctx.obj.config
+
+    cluster_name = cluster or cfg.get('cluster')
+    ctx.obj.setup_cluster(cluster_name)
+
+@click.command(name='list')
+@click.pass_context
+def services_list(ctx):
+    api = ctx.obj.api
+    cluster = ctx.obj.cluster
+    services = cluster.get_all_services().objects
+
+    for service in services:
+        click.echo(service.name)
+
+@click.group()
+@click.pass_context
+@click.option('-c', '--cluster', default=None)
+@click.option('-s', '--service', default=None)
+def roles(ctx, cluster, service):
+    # ensure CM is accessible
+    ctx.invoke(ping)
+
+    cfg = ctx.obj.config
+
+    cluster_name = cluster or cfg.get('cluster')
+    service_name = service or cfg.get('service')
+
+    ctx.obj.setup_cluster(cluster_name)
+    ctx.obj.setup_service(service_name)
+
+@click.command(name='list')
+@click.pass_context
+def roles_list(ctx):
+    service = ctx.obj.service
+    roles = service.get_all_roles().objects
+
+    for role in roles:
+        click.echo(role.name)
 
 main.add_command(config)
 main.add_command(hosts)
 main.add_command(ping)
+main.add_command(clusters)
+main.add_command(services)
+main.add_command(roles)
+
+clusters.add_command(clusters_list)
+
+services.add_command(services_list)
+
+roles.add_command(roles_list)
 
 hosts.add_command(hosts_list)
 
