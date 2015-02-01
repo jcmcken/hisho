@@ -1,3 +1,4 @@
+import os
 import types
 import codecs
 import click
@@ -145,8 +146,6 @@ def host_list(ctx):
     api = ctx.obj.api
     hosts = api.get_all_hosts().objects
 
-    import pdb;pdb.set_trace()
-
     for host in hosts:
         click.echo(host.hostname)
 
@@ -205,6 +204,35 @@ def service_list(ctx):
     for service in services:
         click.echo(service.name)
 
+@click.command(name='types')
+@click.pass_context
+def service_types(ctx):
+    api = ctx.obj.api
+    cluster = ctx.obj.cluster
+    services = cluster.get_service_types()
+    services.sort()
+
+    for service in services:
+        click.echo(service)
+
+@click.command(name='add')
+@click.pass_context
+@click.argument('service_type')
+def service_add(ctx, service_type):
+    api = ctx.obj.api
+    cluster = ctx.obj.cluster
+
+    cluster.create_service(service_type.lower(), service_type.upper())
+
+@click.command(name='rm')
+@click.pass_context
+@click.argument('service_name')
+def service_rm(ctx, service_name):
+    api = ctx.obj.api
+    cluster = ctx.obj.cluster
+
+    cluster.delete_service(service_name)
+
 @click.group()
 @click.pass_context
 @click.option('-c', '--cluster', default=None)
@@ -218,6 +246,9 @@ def role(ctx, cluster, service):
     cluster_name = cluster or cfg.get('cluster')
     service_name = service or cfg.get('service')
 
+    if not service_name:
+        raise click.UsageError('must pass a service name (-s/--service)')
+
     ctx.obj.setup_cluster(cluster_name)
     ctx.obj.setup_service(service_name)
 
@@ -226,9 +257,21 @@ def role(ctx, cluster, service):
 def role_list(ctx):
     service = ctx.obj.service
     roles = service.get_all_roles().objects
+    import pdb;pdb.set_trace()
 
     for role in roles:
         click.echo(role.name)
+
+@click.command(name='types')
+@click.pass_context
+def role_types(ctx):
+    service = ctx.obj.service
+
+    roles = service.get_role_types()
+    roles.sort()
+    
+    for role in roles:
+        click.echo(role)
 
 main.add_command(config)
 main.add_command(host)
@@ -242,8 +285,12 @@ cluster.add_command(cluster_create)
 cluster.add_command(cluster_rm)
 
 service.add_command(service_list)
+service.add_command(service_types)
+service.add_command(service_add)
+service.add_command(service_rm)
 
 role.add_command(role_list)
+role.add_command(role_types)
 
 host.add_command(host_list)
 
