@@ -1,37 +1,56 @@
+import types
 import codecs
 import click
 import logging
 import urllib2
-from hisho.config import Config
+from functools import wraps
+from hisho.config import Config, DEFAULTS
 from cm_api.api_client import ApiResource, ApiException
 
 LOG = logging.getLogger()
 
+def api_wrapper(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            result = func(*args, **kwargs)
+        except ApiException, e:
+            LOG.exception('got API exception')
+            raise click.UsageError('API command failed, use --debug to see more information')
+        return result
+    return wrapper
+
+class APIWrapper(object):
+    def __init__(self, api_resource):
+        self.api_resource = api_resource
+
+    def __getattr__(self, name):
+        obj = getattr(self.api_resource, name)
+
+        if isinstance(obj, (types.MethodType, types.FunctionType)):
+            result = api_wrapper(obj)
+        else:
+            result = obj
+        return result
+
 class Context(object):
     def __init__(self):
         self.config = Config()
-        self.api = ApiResource(
+        self.api = APIWrapper(ApiResource(
           self.config.get('host'),
           self.config.get('port'),
           self.config.get('username'),
           self.config.get('password'),
           use_tls = self.config.get('use_tls'),
-        )
+        ))
         self.cluster = None
         self.service = None
 
     def setup_service(self, name):
-        try:
-            self.service = self.cluster.get_service(name)
-        except ApiException:
-            raise click.BadParameter('must pass a valid service name')
+        self.service = APIWrapper(self.cluster.get_service(name))
 
     def setup_cluster(self, name):
-        try:
-            self.cluster = self.api.get_cluster(name)
-        except ApiException:
-            raise click.BadParameter('must pass a valid cluster name')
-
+        self.cluster = APIWrapper(self.api.get_cluster(name))
 
 @click.command()
 @click.pass_context
@@ -42,8 +61,6 @@ def ping(ctx):
         result = api.echo('ping').get('message')
     except urllib2.URLError:
         raise click.UsageError('could not contact CM, it may be offline')
-    except ApiException:
-        raise click.UsageError('successfully contacted CM, but the request was rejected')
 
     if result != 'ping':
         raise click.UsageError('successfully pinged CM, but got an unexpected result')
@@ -55,6 +72,7 @@ def main(ctx, debug):
     ctx.obj = Context()
 
     if debug:
+        logging.basicConfig()
         LOG.setLevel(logging.DEBUG)
 
 @click.group()
@@ -115,30 +133,32 @@ def config_destroy(ctx):
 
 @click.group()
 @click.pass_context
-def hosts(ctx):
+def host(ctx):
     pass
 
 @click.command(name='list')
 @click.pass_context
-def hosts_list(ctx):
+def host_list(ctx):
     # ensure CM is accessible
     ctx.invoke(ping)
 
     api = ctx.obj.api
     hosts = api.get_all_hosts().objects
 
+    import pdb;pdb.set_trace()
+
     for host in hosts:
         click.echo(host.hostname)
 
 @click.group()
 @click.pass_context
-def clusters(ctx):
+def cluster(ctx):
     # ensure CM is accessible
     ctx.invoke(ping)
 
 @click.command(name='list')
 @click.pass_context
-def clusters_list(ctx):
+def cluster_list(ctx):
 
     api = ctx.obj.api
     clusters = api.get_all_clusters().objects
@@ -146,10 +166,27 @@ def clusters_list(ctx):
     for cluster in clusters:
         click.echo(cluster.name)
 
+@click.command(name='create')
+@click.pass_context
+@click.argument('cluster_name')
+@click.argument('full_version')
+def cluster_create(ctx, cluster_name, full_version):
+    api = ctx.obj.api
+
+    api.create_cluster(cluster_name, fullVersion=full_version)
+
+@click.command(name='rm')
+@click.pass_context
+@click.argument('cluster_name')
+def cluster_rm(ctx, cluster_name):
+    api = ctx.obj.api
+
+    api.delete_cluster(cluster_name)
+
 @click.group()
 @click.pass_context
 @click.option('-c', '--cluster', default=None)
-def services(ctx, cluster):
+def service(ctx, cluster):
     # ensure CM is accessible
     ctx.invoke(ping)
 
@@ -160,7 +197,7 @@ def services(ctx, cluster):
 
 @click.command(name='list')
 @click.pass_context
-def services_list(ctx):
+def service_list(ctx):
     api = ctx.obj.api
     cluster = ctx.obj.cluster
     services = cluster.get_all_services().objects
@@ -172,7 +209,7 @@ def services_list(ctx):
 @click.pass_context
 @click.option('-c', '--cluster', default=None)
 @click.option('-s', '--service', default=None)
-def roles(ctx, cluster, service):
+def role(ctx, cluster, service):
     # ensure CM is accessible
     ctx.invoke(ping)
 
@@ -186,7 +223,7 @@ def roles(ctx, cluster, service):
 
 @click.command(name='list')
 @click.pass_context
-def roles_list(ctx):
+def role_list(ctx):
     service = ctx.obj.service
     roles = service.get_all_roles().objects
 
@@ -194,19 +231,21 @@ def roles_list(ctx):
         click.echo(role.name)
 
 main.add_command(config)
-main.add_command(hosts)
+main.add_command(host)
 main.add_command(ping)
-main.add_command(clusters)
-main.add_command(services)
-main.add_command(roles)
+main.add_command(cluster)
+main.add_command(service)
+main.add_command(role)
 
-clusters.add_command(clusters_list)
+cluster.add_command(cluster_list)
+cluster.add_command(cluster_create)
+cluster.add_command(cluster_rm)
 
-services.add_command(services_list)
+service.add_command(service_list)
 
-roles.add_command(roles_list)
+role.add_command(role_list)
 
-hosts.add_command(hosts_list)
+host.add_command(host_list)
 
 config.add_command(config_generate)
 config.add_command(config_set)
