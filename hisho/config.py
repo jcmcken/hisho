@@ -43,8 +43,8 @@ class Config(object):
     DIR_CANDIDATES = ['/dev/shm', '~']
     SECTION_NAME = 'hisho'
 
-    def __init__(self):
-        self.filename = self._generate_filename()
+    def __init__(self, filename=None):
+        self.filename = filename or self._generate_filename()
         LOG.debug('booting config with filename %s' % self.filename)
         self.parser = self._generate_parser()
         self.converter = Converter()

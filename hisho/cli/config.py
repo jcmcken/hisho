@@ -1,5 +1,6 @@
 import click
 import logging
+from hisho.config import Config
 
 LOG = logging.getLogger(__name__)
 
@@ -59,8 +60,20 @@ def config_destroy(ctx):
     cfg = ctx.obj.config
     cfg.destroy()
 
+@click.command(name='load')
+@click.pass_context
+@click.argument('filename')
+def config_load(ctx, filename):
+    cfg = ctx.obj.config
+
+    for k,v in Config(filename).iteritems():
+        cfg.set(k, v)
+    
+    cfg.save()
+
 config.add_command(config_generate)
 config.add_command(config_set)
 config.add_command(config_rm)
 config.add_command(config_show)
 config.add_command(config_destroy)
+config.add_command(config_load)
