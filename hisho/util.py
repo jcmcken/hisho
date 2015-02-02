@@ -47,6 +47,16 @@ class Context(object):
 
     def setup_service(self, name):
         self.service = APIWrapper(self.cluster.get_service(name))
+        return self.service
 
     def setup_cluster(self, name):
         self.cluster = APIWrapper(self.api.get_cluster(name))
+        return self.cluster
+
+def convert_keyval_string(raw):
+    try:
+        key, val = raw.split('=', 1)
+    except ValueError:
+        key = raw
+        val = ''
+    return key, val

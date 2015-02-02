@@ -1,6 +1,7 @@
 import click
 import logging
 from hisho.cli.main import ping
+from hisho.util import convert_keyval_string
 
 LOG = logging.getLogger(__name__)
 
@@ -55,7 +56,23 @@ def service_rm(ctx, service_name):
 
     cluster.delete_service(service_name)
 
+@click.command(name='configure')
+@click.pass_context
+@click.argument('service_name')
+@click.argument('values', nargs=-1)
+@click.option('--noop', default=False, is_flag=True)
+def service_configure(ctx, service_name, values, noop):
+    service = ctx.obj.setup_service(service_name)
+
+    config = dict(convert_keyval_string(i) for i in values)        
+
+    if noop:
+        return
+
+    service.update_config(config)
+
 service.add_command(service_list)
 service.add_command(service_types)
 service.add_command(service_create)
 service.add_command(service_rm)
+service.add_command(service_configure)
