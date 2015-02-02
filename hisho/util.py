@@ -14,8 +14,8 @@ def api_wrapper(func):
             result = func(*args, **kwargs)
         except ApiException, e:
             LOG.exception('got API exception')
-            raise click.UsageError('API command failed (%s). \n\nUse --debug to '
-              'print more information.' % e.args[0])
+            raise click.UsageError('API command failed (%s). \n\nUse `hisho --debug\' '
+              'instead of `hisho\' to print more information.' % e.args[0])
         return result
     return wrapper
 
